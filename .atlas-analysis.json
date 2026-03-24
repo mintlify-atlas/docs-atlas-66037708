@@ -1,0 +1,88 @@
+{
+  "projectType": "general",
+  "projectName": "RIU Web App Automation",
+  "projectDescription": "A Selenium 4 + Cucumber 7 BDD test automation framework in Java 21 that validates the RIU Hotels & Resorts website's user registration flow using the Page Object Model pattern.",
+  "theme": "palm",
+  "primaryColor": "#1A4D8F",
+  "lightColor": "#E8F0FB",
+  "darkColor": "#0D2E5A",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": ["introduction", "quickstart"]
+          },
+          {
+            "group": "Architecture",
+            "pages": [
+              "architecture/overview",
+              "architecture/page-object-model",
+              "architecture/dependency-injection"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/writing-tests",
+              "guides/adding-page-objects",
+              "guides/running-tests",
+              "guides/allure-reports"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "reference/base-page",
+              "reference/test-context",
+              "reference/hooks",
+              "reference/configuration"
+            ]
+          },
+          {
+            "group": "FAQ",
+            "pages": ["faq"]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Selenium 4 with built-in driver management (no manual ChromeDriver setup)",
+    "Cucumber 7 BDD with Gherkin feature files for readable test scenarios",
+    "Page Object Model (POM) with BasePage providing safe, wait-backed Selenium wrappers",
+    "PicoContainer dependency injection for sharing WebDriver across step definitions",
+    "Allure reporting integration with rich HTML test reports including step-level details",
+    "TestNG runner with tag-based test execution (@smoke filter)",
+    "AspectJ weaving for Allure step annotation capture",
+    "Cross-platform test execution (Unix shell + Windows batch scripts for Allure CLI)"
+  ],
+  "publicApiSurface": [
+    "BasePage#find(By) — wait for visibility and return WebElement",
+    "BasePage#click(By) — wait for clickability and click element",
+    "BasePage#type(By, String) — clear and type text into an input field",
+    "BasePage#getText(By) — get visible text of an element",
+    "BasePage#isDisplayed(By) — safe boolean visibility check",
+    "BasePage#isClickable(By) — safe boolean clickability check",
+    "BasePage#navigateTo(String) — navigate the browser to a URL",
+    "TestContext#driver — shared WebDriver instance across all step classes",
+    "RiuHome#navigateToRiu() — navigate to the RIU Hotels homepage",
+    "RiuHome#clickAcceptCookies() — click the cookie consent banner",
+    "RiuHome#clickRegister() — click the RIU pro access/register button",
+    "LoginModal#clickRegisterTab() — switch to the registration tab in the modal",
+    "LoginModal#typeNameTextBox(String) — fill the first name field",
+    "LoginModal#typeSurnameTextBox(String) — fill the surname field",
+    "LoginModal#typeEmailTextBox(String) — fill the email field",
+    "LoginModal#selectArgentina() — select Argentina from the country dropdown",
+    "LoginModal#clickCalendar() — open the birth date calendar picker",
+    "LoginModal#clickNoDate() — skip birth date selection",
+    "LoginModal#selectMale() — select male gender",
+    "LoginModal#clickSalesInfoRadioButton() — opt-in for commercial information",
+    "LoginModal#clickAcceptConditionsCheck() — check the terms and conditions checkbox",
+    "LoginModal#clickSubmitButton() — submit the registration form",
+    "LoginModal#isReqFielVisible() — assert birth date required-field validation error is shown",
+    "@smoke tag — Cucumber tag filter used by TestRunner to select scenarios for execution"
+  ]
+}
