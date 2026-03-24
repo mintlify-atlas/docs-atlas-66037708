@@ -24,9 +24,8 @@ Cucumber runs each scenario in isolation, but multiple step definition classes (
 ```
 Scenario starts
     └─ PicoContainer creates TestContext
-            ├─ Hooks(TestContext)  → @Before sets context.driver = new ChromeDriver()
-            ├─ LoginSteps(TestContext) → passes context.driver to page objects
-            └─ RegistrationSteps(TestContext) → same driver instance
+            ├─ Hooks(TestContext)    → @Before sets context.driver = new ChromeDriver()
+            └─ RiuSteps(TestContext) → passes context.driver to RiuHome / LoginModal page objects
 ```
 
 ## Fields
@@ -40,19 +39,29 @@ Scenario starts
 PicoContainer automatically manages `TestContext` because it is listed in the `glue` packages (`steps` and `hooks`). Any class in those packages that declares a constructor accepting `TestContext` will receive the **same instance** for the duration of a scenario.
 
 ```java
-// In a step definition class
-public class RegistrationSteps {
+// The actual step definition class in this project
+public class RiuSteps {
 
-    private final WebDriver driver;
+    private TestContext context;
+    private RiuHome riuHome;
+    private LoginModal loginModal;
 
-    public RegistrationSteps(TestContext context) {
-        this.driver = context.driver;
+    public RiuSteps(TestContext context) {
+        this.context = context;  // PicoContainer injects TestContext here
     }
 
-    @When("I fill in the registration form")
-    public void iFillInTheRegistrationForm() {
-        RegistrationPage page = new RegistrationPage(driver);
-        page.fillForm(/* ... */);
+    @Given("que el usuario navega a la pagina principal de RIU")
+    public void navegarARiu() {
+        riuHome = new RiuHome(context.driver);  // driver set by Hooks.setUp()
+        riuHome.navigateToRiu();
+    }
+
+    @And("completa el formulario de registro sin fechas")
+    public void completaElFormularioDeRegistro() {
+        loginModal = new LoginModal(context.driver);  // same browser session
+        loginModal.clickRegisterTab();
+        loginModal.typeName("Fernando");
+        // ...
     }
 }
 ```

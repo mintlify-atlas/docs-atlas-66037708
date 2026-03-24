@@ -163,8 +163,12 @@ public class LoginModal extends BasePage {
 
     public LoginModal(WebDriver driver) { super(driver); }
 
+    // Navigation
+    public void clickRegisterTab()             { click(this.registerTab); }
+    public void clickRegisterBtn()             { click(this.registerBtn); }
+
     // Form filling
-    public void typeName(String name)         { type(this.nameTextBox, name); }
+    public void typeName(String name)          { type(this.nameTextBox, name); }
     public void typeLastName(String lastname)  { type(this.surnameTextBox, lastname); }
     public void typeEmail(String email)        { type(this.emailTextBox, email); }
 
@@ -183,12 +187,32 @@ public class LoginModal extends BasePage {
     public void clickTermsCheck()              { click(this.termsCheckBox); }
     public boolean isTermsUnchecked()          { return !isChecked(this.termsCheckBox); }
 
-    // Assertions
+    // Visibility / state checks
     public boolean isLoginModalVisible()       { return isDisplayed(this.loginModal); }
+    public boolean isRegisterTabVisible()      { return isDisplayed(this.registerTab); }
+    public boolean isRegisterTabClickable()    { return isClickable(this.registerTab); }
+    public boolean isRegisterTitleVisible()    { return isDisplayed(this.registerTitle); }
+    public boolean isNameTextBoxVisible()      { return isDisplayed(this.nameTextBox); }
+    public boolean isNameTextBoxClickable()    { return isClickable(this.nameTextBox); }
+    public boolean isLastNameTextBoxVisible()  { return isDisplayed(this.surnameTextBox); }
+    public boolean isLastNameTextBoxClickable(){ return isClickable(this.surnameTextBox); }
+    public boolean isEmailTextBoxVisible()     { return isDisplayed(this.emailTextBox); }
+    public boolean isEmailTextBoxClickable()   { return isClickable(this.emailTextBox); }
+    public boolean isCountrySelectVisible()    { return isDisplayed(this.countrySelect); }
+    public boolean isCountrySelectClickable()  { return isClickable(this.countrySelect); }
+    public boolean isArgOptVisible()           { return isDisplayed(this.Argentina); }
+    public boolean isNoDateBtnVisible()        { return isDisplayed(this.noDateBtn); }
+    public boolean isGenreSelectVisible()      { return isDisplayed(this.genreSelect); }
+    public boolean isGenreSelectClickable()    { return isClickable(this.genreSelect); }
+    public boolean isMaleOptVisible()          { return isDisplayed(this.male); }
+    public boolean isSalesRadioBtnVisible()    { return isDisplayed(this.salesInfoRadioBtn); }
+    public boolean isSalesRadioBtnClickable()  { return isClickable(this.salesInfoRadioBtn); }
+    public boolean isTermsCheckVisible()       { return isDisplayed(this.termsCheckBox); }
+    public boolean isTermsCheckClickable()     { return isClickable(this.termsCheckBox); }
     public boolean isReqFielVisible()          { return isDisplayed(this.reqField); }
-    public String  extractTitle()              { return locatorText(this.registerTitle); }
 
-    public void clickRegisterBtn()             { click(this.registerBtn); }
+    // Data extraction
+    public String  extractTitle()              { return locatorText(this.registerTitle); }
 }
 ```
 
