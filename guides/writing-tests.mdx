@@ -1,0 +1,202 @@
+---
+title: "Writing tests"
+description: "How to write new Gherkin scenarios and wire them to step definitions"
+---
+
+## The BDD approach
+
+Tests in this project follow a three-layer BDD flow:
+
+1. **Feature file** — a `.feature` file written in Gherkin that describes behaviour in plain language
+2. **Step definitions** — Java methods annotated with `@Given`, `@When`, `@And`, or `@Then` that execute the Gherkin steps
+3. **Page objects** — Java classes that encapsulate element locators and browser interactions for a specific page
+
+```
+RegistroRiu.feature
+       │
+       ▼
+  RiuSteps.java          ← @Given / @When / @And / @Then
+       │
+       ▼
+  RiuHome.java           ← element locators + actions
+  LoginModal.java
+```
+
+Keeping these layers separate means you can change a locator in one place without touching the test scenario or step logic.
+
+## The existing feature file
+
+The project currently has one feature file at `src/test/resources/features/RegistroRiu.feature`:
+
+```gherkin RegistroRiu.feature
+Feature: Registro de usuario en RIU
+
+  @smoke
+  Scenario: Navegar a la página de RIU y abrir el formulario de registro
+    Given que el usuario navega a la pagina principal de RIU
+    When el usuario acepta las cookies
+    And hace clic en el boton de registrarse
+    And completa el formulario de registro sin fechas
+    Then se deberia mostrar la validación de campo requerido para fecha
+```
+
+Every `Given`/`When`/`And`/`Then` line maps exactly to a method in `RiuSteps.java`. The `@smoke` tag marks this scenario for the default test run.
+
+## Adding a new scenario
+
+<Steps>
+  <Step title="Open or create a feature file">
+    Place `.feature` files inside `src/test/resources/features/`. You can add scenarios to an existing file or create a new one.
+
+    ```gherkin src/test/resources/features/RegistroRiu.feature
+    Feature: Registro de usuario en RIU
+
+      @smoke
+      Scenario: Navegar a la página de RIU y abrir el formulario de registro
+        Given que el usuario navega a la pagina principal de RIU
+        ...
+
+      @regression
+      Scenario: Verificar el título de la página principal
+        Given que el usuario navega a la pagina principal de RIU
+        Then el título debería ser "RIU Hotels & Resorts · Web Oficial · RIU.com"
+    ```
+  </Step>
+
+  <Step title="Run the test to get pending step snippets">
+    Run `mvn test` after adding the new scenario. Cucumber will print an `Undefined step` warning to the console with the method signatures you need to implement:
+
+    ```
+    @Then("el título debería ser {string}")
+    public void elTituloDeber__SerString(String string) {
+        // Write code here that turns the phrase above into concrete actions
+        throw new io.cucumber.java.PendingException();
+    }
+    ```
+  </Step>
+
+  <Step title="Add the step definition to the steps class">
+    Open `src/test/java/steps/RiuSteps.java` (or create a new steps class) and implement the method. Use the injected `TestContext` to access the `WebDriver` and construct page objects:
+
+    ```java src/test/java/steps/RiuSteps.java
+    @Then("el título debería ser {string}")
+    public void verifyPageTitle(String expectedTitle) {
+        String actualTitle = context.driver.getTitle();
+        Assert.assertEquals(actualTitle, expectedTitle, "El título de la página no coincide");
+    }
+    ```
+  </Step>
+
+  <Step title="Create a page object if needed">
+    If the step interacts with a page that does not have a page object yet, create one. See [Adding page objects](/guides/adding-page-objects) for a full walkthrough.
+  </Step>
+
+  <Step title="Run the test again">
+    ```bash
+    mvn test
+    ```
+
+    The new scenario should now execute and either pass or fail with a meaningful assertion message.
+  </Step>
+</Steps>
+
+## Tagging scenarios
+
+Tags annotate individual scenarios or an entire `Feature` block. The default runner in `TestRunner.java` is configured to run `@smoke`:
+
+```java runners/TestRunner.java
+@CucumberOptions(
+    features = "classpath:features",
+    glue     = {"steps", "hooks"},
+    tags     = "@smoke",
+    plugin   = { "pretty", "io.qameta.allure.cucumber7jvm.AllureCucumber7Jvm" }
+)
+```
+
+Use tags to categorize your scenarios:
+
+| Tag | Intended use |
+|---|---|
+| `@smoke` | Critical happy-path scenarios, run on every build |
+| `@regression` | Full regression scenarios, run before releases |
+| `@wip` | Work-in-progress scenarios, excluded from CI |
+
+```gherkin
+@smoke
+Scenario: Scenario A — runs by default
+  ...
+
+@regression
+Scenario: Scenario B — skipped by default runner
+  ...
+
+@smoke @regression
+Scenario: Scenario C — matches both filters
+  ...
+```
+
+<Tip>
+  Tag a whole `Feature` block to apply the tag to every scenario inside it instead of annotating each one individually.
+</Tip>
+
+## Running specific tags
+
+Override the tag filter at runtime without changing `TestRunner.java`:
+
+```bash
+# Run only @smoke scenarios (default)
+mvn test
+
+# Run only @regression scenarios
+mvn test -Dcucumber.filter.tags="@regression"
+
+# Run scenarios tagged @smoke AND @regression
+mvn test -Dcucumber.filter.tags="@smoke and @regression"
+
+# Run scenarios tagged @smoke OR @regression
+mvn test -Dcucumber.filter.tags="@smoke or @regression"
+
+# Exclude @wip scenarios
+mvn test -Dcucumber.filter.tags="not @wip"
+```
+
+<Note>
+  `cucumber.filter.tags` overrides the `tags` value in `@CucumberOptions` for that run only. The source code is not modified.
+</Note>
+
+## Mapping Gherkin steps to Java methods
+
+The step text in the feature file must match the annotation string in the Java method exactly (Cucumber treats it as a regular expression).
+
+```gherkin Feature file
+Given que el usuario navega a la pagina principal de RIU
+```
+
+```java RiuSteps.java
+@Given("que el usuario navega a la pagina principal de RIU")
+public void navegarARiu() {
+    riuHome = new RiuHome(context.driver);
+    riuHome.navigateToRiu();
+
+    String expectedTitle = "RIU Hotels & Resorts · Web Oficial · RIU.com";
+    String actualTitle   = context.driver.getTitle();
+    Assert.assertEquals(actualTitle, expectedTitle, "¡Error! El título de la página no es el esperado.");
+}
+```
+
+Use `{string}`, `{int}`, and `{word}` capture groups to pass dynamic values from the Gherkin step into the method parameter:
+
+```gherkin
+And el usuario escribe "Fernando" en el campo de nombre
+```
+
+```java
+@And("el usuario escribe {string} en el campo de nombre")
+public void typeName(String name) {
+    loginModal.typeName(name);
+}
+```
+
+<Warning>
+  If the annotation text does not match the Gherkin step exactly, Cucumber marks the step as **Undefined** and the scenario is skipped.
+</Warning>

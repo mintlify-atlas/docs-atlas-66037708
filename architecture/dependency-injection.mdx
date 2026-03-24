@@ -1,0 +1,205 @@
+---
+title: "Dependency injection"
+description: "How PicoContainer manages shared state across Cucumber step definitions"
+---
+
+Cucumber instantiates step definition classes fresh for every scenario. Without a mechanism to share objects across those classes, you would have to resort to static fields — a pattern that breaks parallel execution and makes tests order-dependent. PicoContainer solves this through constructor injection, with zero configuration required.
+
+## The problem
+
+Consider a test that has two step definition classes: one for navigation steps and one for form steps. Both need the same `WebDriver` instance so that they operate on the same browser window.
+
+<Tabs>
+  <Tab title="Without DI (problematic)">
+    ```java
+    // Shared state via static field — breaks parallel runs
+    public class NavigationSteps {
+        private static WebDriver driver = new ChromeDriver(); // bad
+    }
+
+    public class FormSteps {
+        private static WebDriver driver = NavigationSteps.driver; // worse
+    }
+    ```
+
+    Static fields survive between scenarios, leak state, and make thread-safety impossible.
+  </Tab>
+  <Tab title="With DI (correct)">
+    ```java
+    // PicoContainer injects the same TestContext into every class
+    public class NavigationSteps {
+        public NavigationSteps(TestContext context) { /* context.driver is ready */ }
+    }
+
+    public class FormSteps {
+        public FormSteps(TestContext context) { /* same instance */ }
+    }
+    ```
+
+    PicoContainer creates exactly one `TestContext` per scenario and injects it wherever it is needed.
+  </Tab>
+</Tabs>
+
+## `TestContext` — the shared state container
+
+`TestContext` is a plain Java object whose only job is to carry the `WebDriver` instance across class boundaries.
+
+```java
+package utilities;
+
+import org.openqa.selenium.WebDriver;
+
+public class TestContext {
+    public WebDriver driver;
+}
+```
+
+<Note>
+  `TestContext` deliberately has no constructor logic, no annotations, and no framework dependencies. It is a simple data holder. PicoContainer detects it automatically because it has a no-arg constructor.
+</Note>
+
+You can extend `TestContext` with additional shared state (e.g., test data objects, configuration values) without changing how injection works.
+
+## How `Hooks` uses it
+
+`Hooks` declares `TestContext` as a constructor parameter. PicoContainer sees this and injects the same instance it will use for every other class in the scenario.
+
+```java
+public class Hooks {
+
+    private TestContext context;
+
+    public Hooks(TestContext context) {      // PicoContainer injects here
+        this.context = context;
+    }
+
+    @Before
+    public void setUp() {
+        context.driver = new ChromeDriver();  // stored on the shared context
+        context.driver.manage().window().maximize();
+    }
+
+    @After
+    public void tearDown() {
+        if (context.driver != null) {
+            context.driver.quit();            // cleaned up after every scenario
+        }
+    }
+}
+```
+
+`@Before` runs before the first step of every scenario. `@After` runs after the last step — even if the scenario fails — so the browser is always closed and memory is freed.
+
+## How `RiuSteps` uses it
+
+`RiuSteps` follows the same pattern: declare `TestContext` in the constructor, then use `context.driver` to instantiate page objects.
+
+```java
+public class RiuSteps {
+
+    private TestContext context;
+    private RiuHome riuHome;
+    private LoginModal loginModal;
+
+    public RiuSteps(TestContext context) {   // same TestContext instance
+        this.context = context;
+    }
+
+    @Given("que el usuario navega a la pagina principal de RIU")
+    public void navegarARiu() {
+        riuHome = new RiuHome(context.driver);  // driver comes from Hooks.setUp()
+        riuHome.navigateToRiu();
+        // ...
+    }
+
+    @And("completa el formulario de registro sin fechas")
+    public void completaElFormularioDeRegistro() {
+        loginModal = new LoginModal(context.driver); // same driver, same browser window
+        // ...
+    }
+}
+```
+
+## PicoContainer's role
+
+PicoContainer is the DI library bundled with `cucumber-picocontainer`. It operates entirely through **constructor injection** — no annotations, no XML, no configuration files.
+
+<Steps>
+  <Step title="Scenario starts">
+    Cucumber signals the start of a new scenario.
+  </Step>
+  <Step title="PicoContainer builds the object graph">
+    PicoContainer inspects the constructor signatures of every class in the `glue` packages (`steps`, `hooks`). It sees that `Hooks` and `RiuSteps` both need a `TestContext`, so it creates **one** `TestContext` instance.
+  </Step>
+  <Step title="Injection happens">
+    PicoContainer injects that single `TestContext` into the constructors of both `Hooks` and `RiuSteps`. No manual wiring is required.
+  </Step>
+  <Step title="Hooks runs @Before">
+    `Hooks.setUp()` assigns a new `ChromeDriver` to `context.driver`. Because `RiuSteps` holds a reference to the same `TestContext`, it immediately sees the live driver.
+  </Step>
+  <Step title="Steps execute">
+    Each step method in `RiuSteps` reads `context.driver` to create page objects. All page objects operate on the same browser session.
+  </Step>
+  <Step title="Hooks runs @After">
+    `Hooks.tearDown()` quits the browser. PicoContainer then discards the `TestContext` instance.
+  </Step>
+  <Step title="Next scenario">
+    A brand-new `TestContext` is created for the next scenario. There is no shared state between scenarios.
+  </Step>
+</Steps>
+
+## Sequence summary
+
+```
+Cucumber
+  │
+  ├─ PicoContainer creates TestContext
+  │
+  ├─ injects TestContext → Hooks
+  │     └─ @Before: context.driver = new ChromeDriver()
+  │
+  ├─ injects TestContext → RiuSteps
+  │     ├─ @Given: new RiuHome(context.driver)
+  │     ├─ @When:  riuHome.clickAcceptCookies()
+  │     ├─ @And:   new LoginModal(context.driver)
+  │     └─ @Then:  loginModal.isReqFielVisible()
+  │
+  └─ @After: context.driver.quit()
+```
+
+## Adding a second step definition class
+
+To share `TestContext` with a new step class, declare it in the constructor — nothing else is needed.
+
+```java
+package steps;
+
+import utilities.TestContext;
+import pages.SearchResults;
+
+public class SearchSteps {
+
+    private TestContext context;
+    private SearchResults searchResults;
+
+    public SearchSteps(TestContext context) {
+        this.context = context;
+    }
+
+    @When("the user searches for {string}")
+    public void searchFor(String destination) {
+        searchResults = new SearchResults(context.driver);
+        // ...
+    }
+}
+```
+
+PicoContainer automatically injects the same `TestContext` into `SearchSteps` as it does into `Hooks` and `RiuSteps`. No registration, no annotations, no XML.
+
+<Tip>
+  The `glue` option in `TestRunner` must include the package of any new step class. For example, if you add `steps.search.SearchSteps`, add `"steps.search"` to the `glue` array in `@CucumberOptions`.
+</Tip>
+
+<Warning>
+  Do not store page object instances (like `riuHome` or `loginModal`) on `TestContext`. Page objects are cheap to create and should be scoped to the step method that needs them. Only objects that genuinely need to cross class boundaries — like `WebDriver` — belong in `TestContext`.
+</Warning>

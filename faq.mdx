@@ -1,0 +1,226 @@
+---
+title: "FAQ"
+description: "Frequently asked questions about RIU Web App Automation"
+---
+
+<AccordionGroup>
+
+  <Accordion title="Why do tests fail with 'cannot find ChromeDriver'?">
+    Selenium 4 includes a built-in **Selenium Manager** that automatically downloads the correct ChromeDriver version for your installed Chrome. This error normally means one of the following:
+
+    - You are using an older Selenium version (below 4.6) that does not include Selenium Manager. Check your `pom.xml` and confirm `selenium-java` is `4.18.1`.
+    - Your machine does not have an internet connection at test runtime, so Selenium Manager cannot download the driver binary.
+    - There is a version mismatch between your Chrome browser and the cached ChromeDriver binary. Delete the cached binary (usually in `~/.cache/selenium`) and let Selenium Manager re-download it.
+
+    If you are in an offline or restricted environment, download the correct ChromeDriver manually from the [Chrome for Testing](https://googlechromelabs.github.io/chrome-for-testing/) page and point Selenium to it:
+
+    ```bash
+    mvn test -Dwebdriver.chrome.driver=/path/to/chromedriver
+    ```
+  </Accordion>
+
+  <Accordion title="How do I run tests in headless mode?">
+    The current `Hooks.setUp()` creates a standard `ChromeDriver` with no options. To run headlessly, pass `ChromeOptions` with the `--headless` argument:
+
+    ```java
+    @Before
+    public void setUp() {
+        ChromeOptions options = new ChromeOptions();
+        options.addArguments("--headless=new"); // Selenium 4 headless mode
+        options.addArguments("--window-size=1920,1080");
+        context.driver = new ChromeDriver(options);
+    }
+    ```
+
+    Use `--headless=new` (not the legacy `--headless`) to get the Chromium-based headless mode that better matches visible Chrome rendering.
+
+    Headless mode is recommended for CI pipelines where no display server is available.
+  </Accordion>
+
+  <Accordion title="Why is AspectJ configured in the Surefire plugin?">
+    Allure uses **AOP (Aspect-Oriented Programming)** to intercept `@Step` and `@Attachment` annotations at runtime. This interception is performed by the `aspectjweaver` Java agent.
+
+    Without the `-javaagent` argument, the JVM does not load the weaver and Allure annotations are silently ignored — the report will show scenario-level pass/fail but no step-level data, attachments, or parameter details.
+
+    The relevant section in `pom.xml`:
+
+    ```xml
+    <argLine>
+      -javaagent:"${settings.localRepository}/org/aspectj/aspectjweaver/1.9.21/aspectjweaver-1.9.21.jar"
+    </argLine>
+    ```
+
+    AspectJ version `1.9.21` is used because it supports Java 21. If you upgrade the Java version, also check for a compatible AspectJ release.
+  </Accordion>
+
+  <Accordion title="What does the @smoke tag do and how do I create new tags?">
+    The `@smoke` tag is a Cucumber tag applied to scenarios in `.feature` files. The `TestRunner.java` currently filters execution to only scenarios that carry this tag:
+
+    ```java
+    tags = "@smoke"
+    ```
+
+    To create a new tag, simply add it to a scenario in your feature file:
+
+    ```gherkin
+    @regression @checkout
+    Scenario: User completes checkout
+      Given ...
+    ```
+
+    Then update `TestRunner.java` (or pass `-Dcucumber.filter.tags` at the command line) to include it:
+
+    ```bash
+    mvn test -Dcucumber.filter.tags="@regression"
+    ```
+
+    Tags can be combined with boolean operators: `"@smoke and not @wip"`, `"@smoke or @regression"`.
+  </Accordion>
+
+  <Accordion title="How do I add a new test scenario?">
+    <Steps>
+      <Step title="Write the Gherkin scenario">
+        Add a new `Scenario` block to an existing `.feature` file in `src/test/resources/features/`, or create a new `.feature` file:
+
+        ```gherkin
+        @smoke
+        Scenario: User sees validation error for missing email
+          Given I am on the RIU registration page
+          When I submit the form without an email address
+          Then I should see "Este campo es obligatorio."
+        ```
+      </Step>
+      <Step title="Create or update a Page Object">
+        If the scenario interacts with a new page, create a class that extends `BasePage` in `src/test/java/pages/`. Use the inherited methods (`click`, `type`, `getText`, etc.) rather than calling Selenium directly.
+      </Step>
+      <Step title="Implement the step definitions">
+        Add `@Given`, `@When`, and `@Then` methods to an existing or new step class in `src/test/java/steps/`. Inject `TestContext` via the constructor to access the shared `WebDriver`.
+      </Step>
+      <Step title="Run the scenario">
+        ```bash
+        mvn test
+        ```
+        Or to target just the new tag:
+        ```bash
+        mvn test -Dcucumber.filter.tags="@smoke"
+        ```
+      </Step>
+    </Steps>
+  </Accordion>
+
+  <Accordion title="Why does the framework use PicoContainer?">
+    Selenium tests written with Cucumber typically involve multiple step definition classes that all need to use the same `WebDriver` instance. Without dependency injection, you would have to pass the driver between classes manually or use a static field — both of which lead to brittle, hard-to-maintain code.
+
+    PicoContainer solves this by acting as an IoC container scoped to each scenario:
+
+    - It creates a single `TestContext` instance at the start of the scenario.
+    - It injects that instance into every class (hooks and step definitions) that declares a constructor accepting `TestContext`.
+    - All classes share the same `driver` reference without any global state.
+
+    The only configuration required is adding `cucumber-picocontainer` to `pom.xml` — Cucumber detects it on the classpath and activates it automatically.
+  </Accordion>
+
+  <Accordion title="How do I run tests on Windows vs Linux?">
+    The Maven command is the same on both platforms:
+
+    <CodeGroup>
+
+    ```bash Windows (Command Prompt)
+    mvn test
+    ```
+
+    ```bash Windows (PowerShell)
+    mvn test
+    ```
+
+    ```bash Linux / macOS
+    mvn test
+    ```
+
+    </CodeGroup>
+
+    Platform-specific notes:
+
+    - **Windows**: Make sure `JAVA_HOME` points to a JDK 21 installation and that `%JAVA_HOME%\bin` is on your `PATH`.
+    - **Linux/macOS**: Headless Chrome requires `google-chrome` or `chromium-browser` to be installed. On a CI server with no display, add `--headless=new` to `ChromeOptions` as shown in the headless mode FAQ above.
+    - **AspectJ javaagent path**: The `${settings.localRepository}` Maven property resolves correctly on all platforms. You do not need to hard-code a path.
+  </Accordion>
+
+  <Accordion title="What happens if a Selenium wait times out?">
+    All `BasePage` methods use a `WebDriverWait` with a **10-second timeout**. If the expected condition is not met within that window:
+
+    - Methods that throw on timeout (`find`, `click`, `type`, `getText`, `locatorText`): a `TimeoutException` is propagated up to the step definition, which causes the Cucumber step to fail with a clear error message.
+    - Methods with a built-in catch block (`isDisplayed`, `isClickable`, `isChecked`): the exception is caught and `false` is returned instead of failing the test. This lets you write conditional logic without try-catch in your steps.
+
+    To increase the global timeout, change the `Duration` in the `BasePage` constructor:
+
+    ```java
+    public BasePage(WebDriver driver) {
+        this.driver = driver;
+        this.wait = new WebDriverWait(driver, Duration.ofSeconds(20)); // increased to 20s
+    }
+    ```
+
+    For a one-off longer wait in a specific step, create a local `WebDriverWait` with its own timeout rather than modifying `BasePage`.
+  </Accordion>
+
+  <Accordion title="How do I view test results without Allure installed?">
+    You have two options:
+
+    **Option 1 — Use the Allure Maven plugin (no separate install needed)**
+
+    The `allure-maven` plugin is already in `pom.xml`. Run:
+
+    ```bash
+    mvn allure:serve
+    ```
+
+    This generates the report and opens it in your default browser via a temporary local HTTP server. No separate Allure CLI installation is required.
+
+    **Option 2 — Install the Allure CLI**
+
+    If you want the `allure` command available globally:
+
+    ```bash
+    # macOS
+    brew install allure
+
+    # Linux (via Scoop or manual download)
+    # See https://allurereport.org/docs/install/
+
+    allure serve target/allure-results
+    ```
+
+    **Option 3 — TestNG default report**
+
+    TestNG always generates a basic HTML report at `target/surefire-reports/index.html`. Open it in any browser — no extra tools needed.
+  </Accordion>
+
+  <Accordion title="What browsers are supported?">
+    The framework currently supports **Google Chrome only**. The `Hooks.setUp()` method instantiates `ChromeDriver` directly.
+
+    To add support for another browser, modify `setUp()` to accept a browser parameter (for example, via a system property) and instantiate the appropriate driver:
+
+    ```java
+    @Before
+    public void setUp() {
+        String browser = System.getProperty("browser", "chrome");
+        switch (browser.toLowerCase()) {
+            case "firefox" -> context.driver = new FirefoxDriver();
+            case "edge"    -> context.driver = new EdgeDriver();
+            default        -> context.driver = new ChromeDriver();
+        }
+        context.driver.manage().window().maximize();
+    }
+    ```
+
+    Then select the browser at runtime:
+
+    ```bash
+    mvn test -Dbrowser=firefox
+    ```
+
+    Selenium 4's built-in driver manager handles binary resolution for Firefox (`geckodriver`) and Edge (`msedgedriver`) automatically, just as it does for Chrome.
+  </Accordion>
+
+</AccordionGroup>

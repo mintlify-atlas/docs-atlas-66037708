@@ -1,0 +1,196 @@
+---
+title: "Adding page objects"
+description: "How to create new page object classes for additional website pages"
+---
+
+## When to create a new page object
+
+Create a new page object class whenever a step definition needs to interact with a part of the UI that is not already modelled. Good rules of thumb:
+
+- One page object per distinct page or modal (e.g., `RiuHome`, `LoginModal`, `SearchResults`)
+- If two scenarios share the same UI elements, they should share the same page object
+- Do not put locators or `driver` calls directly inside step definitions — always go through a page object
+
+## How `BasePage` works
+
+All page objects extend `utilities.BasePage`. `BasePage` holds the `WebDriver` instance and a `WebDriverWait` configured with a 10-second timeout. Every Selenium interaction in the project goes through one of its helper methods, which means explicit waits are applied automatically:
+
+| Method | What it does |
+|---|---|
+| `find(By locator)` | Waits until the element is **visible**, then returns it |
+| `click(By locator)` | Waits until the element is **clickable**, then clicks it |
+| `type(By locator, String text)` | Clears the field and types the given text |
+| `getText(By locator)` | Returns the visible inner text of the element |
+| `isDisplayed(By locator)` | Returns `true` if the element is visible; `false` otherwise |
+| `isClickable(By locator)` | Returns `true` if the element is clickable within the timeout |
+| `isChecked(By locator)` | Returns `true` if a checkbox or radio button is selected |
+| `locatorText(By locator)` | Alias for `getText` |
+| `navigateTo(String url)` | Calls `driver.get(url)` |
+
+Because exceptions are caught and converted to `false` inside `isDisplayed`, `isClickable`, and `isChecked`, your step assertions stay clean without extra try/catch blocks.
+
+## Creating a new page object
+
+<Steps>
+  <Step title="Create the class file">
+    Add a new `.java` file under `src/test/java/pages/`. Follow the naming convention: `<PageName>.java`.
+
+    ```
+    src/test/java/pages/
+    ├── RiuHome.java
+    ├── LoginModal.java
+    └── SearchResults.java   ← new file
+    ```
+  </Step>
+
+  <Step title="Declare the class and extend BasePage">
+    ```java src/test/java/pages/SearchResults.java
+    package pages;
+
+    import org.openqa.selenium.By;
+    import org.openqa.selenium.WebDriver;
+    import utilities.BasePage;
+
+    public class SearchResults extends BasePage {
+
+    }
+    ```
+  </Step>
+
+  <Step title="Add the constructor">
+    The constructor must accept a `WebDriver` argument and forward it to `BasePage`:
+
+    ```java
+    public SearchResults(WebDriver driver) {
+        super(driver);
+    }
+    ```
+
+    `super(driver)` sets `this.driver` and creates the `WebDriverWait` instance that all helper methods use.
+  </Step>
+
+  <Step title="Define locators as private fields">
+    Declare every element locator as a `private final By` field at the top of the class. Keep them together so they are easy to maintain:
+
+    ```java
+    // By.id — preferred when the element has a stable id attribute
+    private final By searchInput    = By.id("search-input");
+
+    // By.xpath — use when no id is available
+    private final By firstResult    = By.xpath("(//div[@class='hotel-card'])[1]");
+    private final By resultCount    = By.xpath("//span[@data-qa='result-count']");
+    ```
+
+    <Tip>
+      Prefer `By.id` over XPath when possible — id-based locators are faster and less fragile than structural XPaths.
+    </Tip>
+  </Step>
+
+  <Step title="Add interaction methods">
+    Expose one public method per distinct action or assertion. Delegate to the `BasePage` helpers:
+
+    ```java
+    public void typeSearchQuery(String query) {
+        type(this.searchInput, query);
+    }
+
+    public boolean isFirstResultVisible() {
+        return isDisplayed(this.firstResult);
+    }
+
+    public String getResultCount() {
+        return getText(this.resultCount);
+    }
+
+    public void clickFirstResult() {
+        click(this.firstResult);
+    }
+    ```
+  </Step>
+</Steps>
+
+## Complete example
+
+The following is a full page object modelled on the existing `RiuHome.java` pattern:
+
+```java src/test/java/pages/SearchResults.java
+package pages;
+
+import org.openqa.selenium.By;
+import org.openqa.selenium.WebDriver;
+import utilities.BasePage;
+
+/**
+ * Page object for the RIU hotel search results page.
+ */
+public class SearchResults extends BasePage {
+
+    private final By searchInput  = By.id("search-input");
+    private final By firstResult  = By.xpath("(//div[@class='hotel-card'])[1]");
+    private final By resultCount  = By.xpath("//span[@data-qa='result-count']");
+
+    public SearchResults(WebDriver driver) {
+        super(driver);
+    }
+
+    public void typeSearchQuery(String query) {
+        type(this.searchInput, query);
+    }
+
+    public boolean isFirstResultVisible() {
+        return isDisplayed(this.firstResult);
+    }
+
+    public String getResultCount() {
+        return getText(this.resultCount);
+    }
+
+    public void clickFirstResult() {
+        click(this.firstResult);
+    }
+}
+```
+
+## Using the page object in a step definition
+
+Instantiate the page object inside the relevant step method by passing `context.driver`. `TestContext` is injected into every steps class by PicoContainer:
+
+```java src/test/java/steps/SearchSteps.java
+package steps;
+
+import io.cucumber.java.en.When;
+import io.cucumber.java.en.Then;
+import pages.SearchResults;
+import utilities.TestContext;
+import org.testng.Assert;
+
+public class SearchSteps {
+
+    private TestContext context;
+    private SearchResults searchResults;
+
+    public SearchSteps(TestContext context) {
+        this.context = context;
+    }
+
+    @When("el usuario busca {string}")
+    public void searchForHotel(String query) {
+        searchResults = new SearchResults(context.driver);
+        searchResults.typeSearchQuery(query);
+    }
+
+    @Then("debería haber resultados disponibles")
+    public void verifyResultsAreShown() {
+        Assert.assertTrue(searchResults.isFirstResultVisible(),
+            "No se muestran resultados de búsqueda");
+    }
+}
+```
+
+<Note>
+  You do not need to register the page object anywhere else. PicoContainer handles `TestContext` injection automatically — as long as your steps class accepts `TestContext` in its constructor, the shared `WebDriver` is available.
+</Note>
+
+<Warning>
+  Always instantiate page objects inside step methods rather than in the constructor of the steps class. The `WebDriver` is created by `Hooks.setUp()` at the `@Before` phase, which runs after the steps class is constructed.
+</Warning>

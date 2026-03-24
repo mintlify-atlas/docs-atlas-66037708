@@ -1,0 +1,118 @@
+---
+title: "Architecture overview"
+description: "How the RIU Web App Automation framework is structured"
+---
+
+The RIU Web App Automation framework is a layered BDD test automation stack. Each layer has a single responsibility and communicates only with the layer directly below it, keeping tests readable, maintainable, and free of cross-cutting concerns.
+
+## Layer diagram
+
+```
+┌─────────────────────────────────────────────┐
+│           Feature Files (.feature)           │  ← Plain-language test scenarios
+├─────────────────────────────────────────────┤
+│           Step Definitions (steps/)          │  ← Maps Gherkin → Java
+├─────────────────────────────────────────────┤
+│           Page Objects (pages/)              │  ← UI interactions per page
+├─────────────────────────────────────────────┤
+│           Base Utilities (utilities/)        │  ← Shared WebDriver helpers
+├─────────────────────────────────────────────┤
+│           Selenium 4 WebDriver               │  ← Browser automation engine
+└─────────────────────────────────────────────┘
+```
+
+## Directory structure
+
+```bash
+src/test/
+├── java/
+│   ├── hooks/
+│   │   └── Hooks.java          # @Before / @After lifecycle
+│   ├── pages/
+│   │   ├── RiuHome.java        # Home page object
+│   │   └── LoginModal.java     # Registration modal page object
+│   ├── runners/
+│   │   └── TestRunner.java     # Cucumber + TestNG entry point
+│   ├── steps/
+│   │   └── RiuSteps.java       # Gherkin step implementations
+│   └── utilities/
+│       ├── BasePage.java       # Shared Selenium helpers
+│       └── TestContext.java    # Shared state container
+└── resources/
+    └── features/
+        └── RegistroRiu.feature # BDD test scenarios
+```
+
+## How the layers connect
+
+<Steps>
+  <Step title="Runner triggers Cucumber">
+    `TestRunner` extends `AbstractTestNGCucumberTests` and carries the `@CucumberOptions` annotation. TestNG discovers it and delegates scenario execution to the Cucumber engine.
+
+    ```java
+    @CucumberOptions(
+        features = "classpath:features",
+        glue = {"steps", "hooks"},
+        tags = "@smoke",
+        plugin = {
+            "pretty",
+            "io.qameta.allure.cucumber7jvm.AllureCucumber7Jvm"
+        }
+    )
+    public class TestRunner extends AbstractTestNGCucumberTests {}
+    ```
+  </Step>
+
+  <Step title="Hooks manage the browser lifecycle">
+    Before each scenario, `Hooks.setUp()` creates a new `ChromeDriver` instance and stores it on `TestContext`. After each scenario, `Hooks.tearDown()` quits the browser and frees memory.
+  </Step>
+
+  <Step title="Step definitions orchestrate the test">
+    `RiuSteps` receives `TestContext` via PicoContainer constructor injection. Each Gherkin step maps to a method that creates a page object and delegates the action to it.
+  </Step>
+
+  <Step title="Page objects drive the browser">
+    `RiuHome` and `LoginModal` extend `BasePage`. They hold locators as private fields and expose intent-revealing methods (`clickRegister()`, `typeName()`) rather than raw Selenium calls.
+  </Step>
+
+  <Step title="BasePage wraps Selenium">
+    Every interaction goes through `BasePage`, which wraps raw Selenium calls with 10-second `WebDriverWait` conditions. This single choke-point eliminates flaky timing issues across the entire suite.
+  </Step>
+</Steps>
+
+## Major components
+
+<CardGroup cols={2}>
+  <Card title="TestRunner" icon="play">
+    The Cucumber + TestNG entry point. Configures feature paths, glue packages, tag filters, and Allure reporting. Nothing else needs to change when adding new scenarios.
+  </Card>
+  <Card title="Hooks" icon="bolt">
+    Manages browser lifecycle with `@Before` and `@After` annotations. Receives `TestContext` through PicoContainer so the same driver instance is shared without static fields.
+  </Card>
+  <Card title="Page Objects" icon="browser">
+    One class per page or modal. Locators are private; public methods describe user intent. Extend `BasePage` to inherit all waiting and interaction helpers.
+  </Card>
+  <Card title="BasePage" icon="layers">
+    A thin, opinionated wrapper around Selenium 4. Provides `find`, `click`, `type`, `getText`, `isDisplayed`, `isClickable`, `isChecked`, and `navigateTo` — all with built-in explicit waits.
+  </Card>
+  <Card title="TestContext" icon="share-nodes">
+    A plain Java object that holds the `WebDriver` instance. PicoContainer injects the same instance into every class that declares it as a constructor parameter.
+  </Card>
+  <Card title="Feature Files" icon="file-lines">
+    Gherkin scenarios written in Spanish that describe business behaviour. Tags (`@smoke`) control which scenarios the runner picks up.
+  </Card>
+</CardGroup>
+
+## Technology choices
+
+| Technology | Role | Why |
+|---|---|---|
+| **Selenium 4** | Browser automation | Native WebDriver BiDi support, relative locators, improved grid. |
+| **Cucumber 7** | BDD layer | Gherkin scenarios act as living documentation understood by non-technical stakeholders. |
+| **TestNG** | Test runner | Parallel execution, flexible reporters, and native integration with `AbstractTestNGCucumberTests`. |
+| **PicoContainer** | Dependency injection | Zero-configuration constructor injection keeps step classes stateless and easily composable. |
+| **Allure** | Reporting | Rich HTML reports with step-level screenshots, timeline view, and CI integration. |
+
+<Note>
+  The framework currently targets Chrome via `ChromeDriver`. Cross-browser support can be added by replacing the driver instantiation in `Hooks.java` with a factory that reads a system property.
+</Note>

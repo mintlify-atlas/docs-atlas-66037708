@@ -1,0 +1,166 @@
+---
+title: "Allure reports"
+description: "How to generate and view rich HTML test reports with Allure"
+---
+
+## How Allure is integrated
+
+Allure is wired into the project through two components defined in `pom.xml`:
+
+**`allure-cucumber7-jvm` dependency** — a Cucumber listener that converts each step execution into an Allure result file:
+
+```xml pom.xml
+<dependency>
+    <groupId>io.qameta.allure</groupId>
+    <artifactId>allure-cucumber7-jvm</artifactId>
+    <version>${allure.version}</version>   <!-- 2.27.0 -->
+    <scope>test</scope>
+</dependency>
+```
+
+**AspectJ weaver agent** — required for Allure's `@Step` and `@Attachment` annotations to work at runtime under Java 21. It is passed as a `-javaagent` argument to the JVM via `maven-surefire-plugin`:
+
+```xml pom.xml
+<argLine>
+    -javaagent:"${settings.localRepository}/org/aspectj/aspectjweaver/
+    ${aspectj.version}/aspectjweaver-${aspectj.version}.jar"
+</argLine>
+```
+
+The listener is registered in `TestRunner.java` as a Cucumber plugin:
+
+```java runners/TestRunner.java
+plugin = {
+    "pretty",
+    "io.qameta.allure.cucumber7jvm.AllureCucumber7Jvm"
+}
+```
+
+## Where results are stored
+
+After `mvn test`, raw JSON result files are written to:
+
+```
+target/allure-results/
+```
+
+This path is configured in `maven-surefire-plugin`:
+
+```xml pom.xml
+<systemPropertyVariables>
+    <allure.results.directory>
+        ${project.build.directory}/allure-results
+    </allure.results.directory>
+</systemPropertyVariables>
+```
+
+<Note>
+  `target/allure-results/` contains raw data only — not a viewable report. You need to generate the HTML report from these files using one of the methods below.
+</Note>
+
+## Generating and viewing reports
+
+<Tabs>
+  <Tab title="Maven plugin">
+    The project includes the `allure-maven` plugin (version 2.12.0). Use it to generate a static HTML report or launch a local server.
+
+    **Generate a static report** (written to `target/site/allure-maven-plugin/`):
+
+    ```bash
+    mvn allure:report
+    ```
+
+    **Serve a live report** (opens automatically in your browser):
+
+    ```bash
+    mvn allure:serve
+    ```
+
+    `allure:serve` generates the report and starts a temporary HTTP server. The browser opens automatically. Press `Ctrl+C` to stop the server.
+  </Tab>
+  <Tab title="Allure CLI (Unix)">
+    If Allure CLI was downloaded by the Maven plugin (stored in `.allure/`), you can invoke it directly:
+
+    ```bash
+    .allure/allure-2.20.1/bin/allure serve target/allure-results
+    ```
+
+    To generate a static report without serving it:
+
+    ```bash
+    .allure/allure-2.20.1/bin/allure generate target/allure-results -o target/allure-report --clean
+    ```
+  </Tab>
+  <Tab title="Allure CLI (Windows)">
+    ```powershell
+    .allure\allure-2.20.1\bin\allure.bat serve target\allure-results
+    ```
+
+    To generate a static report:
+
+    ```powershell
+    .allure\allure-2.20.1\bin\allure.bat generate target\allure-results -o target\allure-report --clean
+    ```
+  </Tab>
+</Tabs>
+
+## What the report includes
+
+The Allure HTML report surfaces all of the information collected by the `AllureCucumber7Jvm` listener:
+
+| Section | What you see |
+|---|---|
+| **Overview** | Total pass/fail/skip counts and a trend chart across runs |
+| **Behaviors** | Scenarios grouped by `Feature` and `Scenario` name, mirroring your Gherkin structure |
+| **Step details** | Each `@Given`/`@When`/`@And`/`@Then` step with pass/fail status and elapsed time |
+| **Timeline** | A chronological view of all scenario executions |
+| **Categories** | Failed tests grouped by failure type (product defect, test defect, etc.) |
+
+The **Behaviors** tab is the most useful for BDD projects — it lists your feature files and scenarios exactly as written in Gherkin, making it easy to share with non-technical stakeholders.
+
+## Typical workflow
+
+<Steps>
+  <Step title="Run the tests">
+    ```bash
+    mvn test
+    ```
+
+    This compiles, runs the scenarios, and writes raw results to `target/allure-results/`.
+  </Step>
+
+  <Step title="Open the report">
+    ```bash
+    mvn allure:serve
+    ```
+
+    The report opens in your default browser automatically.
+  </Step>
+
+  <Step title="Review results">
+    Navigate to the **Behaviors** tab to see each scenario's step-by-step result. Failed steps are highlighted in red with the assertion error message.
+  </Step>
+</Steps>
+
+## `allure.properties` configuration
+
+You can add an `allure.properties` file to `src/test/resources/` to customise Allure behaviour:
+
+```properties src/test/resources/allure.properties
+# Custom output directory (default is target/allure-results)
+allure.results.directory=target/allure-results
+
+# Optional: link issue tracker tickets in reports
+allure.link.issue.pattern=https://github.com/NoMeCompila/RIU-Web-App-Automation/issues/{}
+
+# Optional: link test management system
+allure.link.tms.pattern=https://your-tms.example.com/testcase/{}
+```
+
+<Tip>
+  If both `allure.properties` and the `systemPropertyVariables` in `pom.xml` define `allure.results.directory`, the system property from `pom.xml` takes precedence at runtime.
+</Tip>
+
+<Warning>
+  Do not commit the `target/` directory to version control. Add it to `.gitignore` to keep generated reports out of your repository.
+</Warning>

@@ -1,0 +1,129 @@
+---
+title: "Running tests"
+description: "How to run the test suite using Maven and filter by tags"
+---
+
+## Prerequisites
+
+Before running tests, verify that the following are installed and available on your `PATH`:
+
+| Requirement | Minimum version | Check command |
+|---|---|---|
+| Java (JDK) | 21 | `java -version` |
+| Maven | 3.x | `mvn -version` |
+| Google Chrome | Latest stable | `google-chrome --version` or check **Help → About** |
+
+<Note>
+  Selenium 4 includes a built-in driver manager that downloads the matching `chromedriver` binary automatically. You do not need to download or configure `chromedriver` manually.
+</Note>
+
+## Running all smoke tests
+
+The default configuration in `TestRunner.java` runs all scenarios tagged `@smoke`:
+
+```bash
+mvn test
+```
+
+Maven compiles the project, resolves dependencies, and hands control to `maven-surefire-plugin`, which runs `TestRunner` via TestNG. ChromeDriver starts, the browser opens, and each scenario executes in sequence.
+
+## Running with a custom tag filter
+
+Override the tag filter at runtime using the `cucumber.filter.tags` system property:
+
+```bash
+# Run only @regression scenarios
+mvn test -Dcucumber.filter.tags="@regression"
+
+# Combine tags with boolean operators
+mvn test -Dcucumber.filter.tags="@smoke and @regression"
+mvn test -Dcucumber.filter.tags="@smoke or @regression"
+
+# Exclude a tag
+mvn test -Dcucumber.filter.tags="not @wip"
+```
+
+<Tip>
+  `cucumber.filter.tags` overrides the `tags` field in `@CucumberOptions` for that Maven invocation only. The source file is not modified.
+</Tip>
+
+## Understanding `TestRunner`
+
+`src/test/java/runners/TestRunner.java` is the entry point for the test suite:
+
+```java runners/TestRunner.java
+@CucumberOptions(
+    features = "classpath:features",       // location of .feature files
+    glue     = {"steps", "hooks"},          // packages Cucumber scans for step defs and hooks
+    tags     = "@smoke",                    // default tag filter
+    plugin   = {
+        "pretty",                           // human-readable console output
+        "io.qameta.allure.cucumber7jvm.AllureCucumber7Jvm"  // Allure integration
+    }
+)
+public class TestRunner extends AbstractTestNGCucumberTests {
+}
+```
+
+| Option | Value | Purpose |
+|---|---|---|
+| `features` | `classpath:features` | Points to `src/test/resources/features/` |
+| `glue` | `steps`, `hooks` | Packages scanned for `@Given`/`@When`/`@Then` and `@Before`/`@After` |
+| `tags` | `@smoke` | Default tag filter; overridable at runtime |
+| `plugin` | `pretty` + Allure | Console output format and Allure result generation |
+
+## Test output
+
+### Console (Surefire)
+
+During the run, `pretty` plugin prints each scenario and step result to the console:
+
+```
+Scenario: Navegar a la página de RIU y abrir el formulario de registro   # features/RegistroRiu.feature:4
+  Given que el usuario navega a la pagina principal de RIU               # RiuSteps.navegarARiu()
+  When el usuario acepta las cookies                                      # RiuSteps.aceptarCookies()
+  And hace clic en el boton de registrarse                                # RiuSteps.clicRegistrarse()
+  And completa el formulario de registro sin fechas                       # RiuSteps.completaElFormularioDeRegistro()
+  Then se deberia mostrar la validación de campo requerido para fecha     # RiuSteps.verificarFormulario()
+```
+
+A `BUILD SUCCESS` line at the end means all scenarios passed.
+
+### Allure results directory
+
+After each run, raw test data is written to `target/allure-results/`. This directory is read by the Allure CLI or Maven plugin to generate the HTML report. See [Allure reports](/guides/allure-reports) for the full workflow.
+
+## Cross-platform notes
+
+<Tabs>
+  <Tab title="Unix / macOS">
+    ```bash
+    mvn test
+    mvn test -Dcucumber.filter.tags="@regression"
+    ```
+
+    Run from the project root (the directory that contains `pom.xml`).
+  </Tab>
+  <Tab title="Windows">
+    ```powershell
+    mvn test
+    mvn test "-Dcucumber.filter.tags=@regression"
+    ```
+
+    On Windows, wrap the system property value in double quotes to prevent the shell from misinterpreting the `@` character.
+  </Tab>
+</Tabs>
+
+## Common issues
+
+<AccordionGroup>
+  <Accordion title="ChromeDriver version mismatch error">
+    Selenium 4 manages drivers automatically, but if you see a version mismatch, make sure you are using Selenium 4.18.1 or newer (set in `pom.xml`) and that Chrome is up to date.
+  </Accordion>
+  <Accordion title="BUILD FAILURE: No tests were run">
+    This usually means the tag filter returned no matching scenarios. Check that at least one scenario in your feature files is tagged with the tag you specified.
+  </Accordion>
+  <Accordion title="AspectJ weaver not found">
+    Allure requires the AspectJ weaver JAR, which Maven downloads on the first run. If the build fails with a `javaagent` error, run `mvn dependency:resolve` first to populate the local repository.
+  </Accordion>
+</AccordionGroup>

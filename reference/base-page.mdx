@@ -1,0 +1,256 @@
+---
+title: "BasePage"
+description: "API reference for the BasePage utility class"
+---
+
+`BasePage` is the foundation of the Page Object Model in this framework. Every page class extends it to inherit a set of Selenium wrapper methods that apply a **10-second explicit wait** before each interaction, eliminating timing-related flakiness without requiring any extra setup in your page objects.
+
+## Constructor
+
+```java
+public BasePage(WebDriver driver)
+```
+
+Initializes `driver` and creates a `WebDriverWait` with a 10-second timeout. PicoContainer injects the shared `WebDriver` instance when Cucumber instantiates a page object.
+
+```java
+// Typical page object extending BasePage
+public class HomePage extends BasePage {
+    public HomePage(WebDriver driver) {
+        super(driver);
+    }
+}
+```
+
+---
+
+## Methods
+
+### `find`
+
+```java
+protected WebElement find(By locator)
+```
+
+Waits until the element is **visible** in the DOM, then returns it. This is a protected helper used internally by the other methods; call it from subclasses when you need the raw `WebElement`.
+
+<ParamField path="locator" type="By" required>
+  A Selenium `By` locator that identifies the target element (e.g., `By.id("username")`, `By.cssSelector(".btn-primary")`).
+</ParamField>
+
+<ResponseField name="WebElement" type="WebElement">
+  The first matching element that is visible on screen.
+</ResponseField>
+
+<Warning>
+  Throws `TimeoutException` if the element does not become visible within 10 seconds.
+</Warning>
+
+```java
+// Inside a subclass
+WebElement header = find(By.cssSelector("h1.page-title"));
+String text = header.getText();
+```
+
+---
+
+### `click`
+
+```java
+public void click(By locator)
+```
+
+Waits until the element is **clickable** (visible and enabled), then performs a click. Use this for buttons, links, checkboxes, and any other interactive element.
+
+<ParamField path="locator" type="By" required>
+  A Selenium `By` locator for the element to click.
+</ParamField>
+
+<Warning>
+  Throws `TimeoutException` if the element does not become clickable within 10 seconds.
+</Warning>
+
+```java
+click(By.id("submit-btn"));
+click(By.linkText("Sign in"));
+```
+
+---
+
+### `type`
+
+```java
+public void type(By locator, String text)
+```
+
+Clears the current value of an input field, then types the provided text. This method calls `find()` first, so it also waits for the field to be visible before interacting.
+
+<ParamField path="locator" type="By" required>
+  A Selenium `By` locator for the `<input>` or `<textarea>` element.
+</ParamField>
+
+<ParamField path="text" type="String" required>
+  The string to type into the field. The field is cleared before typing.
+</ParamField>
+
+<Note>
+  `clear()` is called before `sendKeys()`, so any pre-existing value is always replaced.
+</Note>
+
+```java
+type(By.name("email"), "user@example.com");
+type(By.id("first-name"), "Maria");
+```
+
+---
+
+### `getText`
+
+```java
+public String getText(By locator)
+```
+
+Waits for the element to be visible, then returns its visible inner text.
+
+<ParamField path="locator" type="By" required>
+  A Selenium `By` locator for the element whose text you want to read.
+</ParamField>
+
+<ResponseField name="String" type="String">
+  The trimmed visible text content of the element, as returned by `WebElement.getText()`.
+</ResponseField>
+
+```java
+String errorMessage = getText(By.cssSelector(".error-msg"));
+assertEquals(errorMessage, "Este campo es obligatorio.");
+```
+
+---
+
+### `locatorText`
+
+```java
+public String locatorText(By locator)
+```
+
+Functionally identical to [`getText`](#gettext). It exists as an alias for readability in certain step definitions.
+
+<ParamField path="locator" type="By" required>
+  A Selenium `By` locator for the element whose text you want to read.
+</ParamField>
+
+<ResponseField name="String" type="String">
+  The visible text of the element. Delegates directly to `getText(locator)`.
+</ResponseField>
+
+<Tip>
+  Prefer `getText` in new code. Use `locatorText` only when it improves the readability of an existing step.
+</Tip>
+
+```java
+String label = locatorText(By.cssSelector("label[for='birthdate']"));
+```
+
+---
+
+### `isDisplayed`
+
+```java
+public boolean isDisplayed(By locator)
+```
+
+Checks whether an element is visible. Catches any exception (including `NoSuchElementException` and `TimeoutException`) and returns `false` instead of throwing, making it safe to use in assertions and conditional logic.
+
+<ParamField path="locator" type="By" required>
+  A Selenium `By` locator for the element to inspect.
+</ParamField>
+
+<ResponseField name="boolean" type="boolean">
+  `true` if the element exists and is visible; `false` if it is absent, hidden, or the wait times out.
+</ResponseField>
+
+```java
+boolean visible = isDisplayed(By.id("cookie-banner"));
+if (visible) {
+    click(By.id("accept-cookies"));
+}
+```
+
+---
+
+### `isClickable`
+
+```java
+public boolean isClickable(By locator)
+```
+
+Checks whether an element is enabled and ready to receive a click. Uses `ExpectedConditions.elementToBeClickable` internally. Returns `false` if the wait expires or any exception is raised.
+
+<ParamField path="locator" type="By" required>
+  A Selenium `By` locator for the element to check.
+</ParamField>
+
+<ResponseField name="boolean" type="boolean">
+  `true` if the element is clickable within the 10-second timeout; `false` otherwise.
+</ResponseField>
+
+```java
+boolean enabled = isClickable(By.id("next-step-btn"));
+assertTrue(enabled, "The 'Next step' button should be enabled");
+```
+
+---
+
+### `isChecked`
+
+```java
+public boolean isChecked(By locator)
+```
+
+Checks whether a checkbox or radio button is selected. Catches any exception and returns `false` safely.
+
+<ParamField path="locator" type="By" required>
+  A Selenium `By` locator for an `<input type="checkbox">` or `<input type="radio">` element.
+</ParamField>
+
+<ResponseField name="boolean" type="boolean">
+  `true` if the input is selected; `false` if it is unchecked or not found.
+</ResponseField>
+
+```java
+boolean accepted = isChecked(By.id("terms-checkbox"));
+assertTrue(accepted, "Terms checkbox should be checked after clicking");
+```
+
+---
+
+### `navigateTo`
+
+```java
+public void navigateTo(String url)
+```
+
+Navigates the current browser window to the given URL. Equivalent to `driver.get(url)`; no explicit wait is applied because page-load behavior is controlled by the browser's implicit page-load timeout.
+
+<ParamField path="url" type="String" required>
+  The full URL to navigate to, including the scheme (e.g., `"https://www.riu.com/es"`).
+</ParamField>
+
+```java
+navigateTO("https://www.riu.com/es");
+// or via a step
+navigateTO("https://www.riu.com/es/hoteles");
+```
+
+---
+
+## Protected fields
+
+| Field | Type | Description |
+|---|---|---|
+| `driver` | `WebDriver` | The active browser session injected by PicoContainer. |
+| `wait` | `WebDriverWait` | Explicit wait configured with a 10-second timeout. |
+
+<Note>
+  Both fields are `protected` so that subclasses can access them directly when the public wrapper methods are not sufficient (for example, when building a `Select` object or performing JavaScript execution).
+</Note>

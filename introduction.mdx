@@ -1,0 +1,73 @@
+---
+title: "RIU Web App Automation"
+description: "A Selenium 4 + Cucumber 7 BDD test automation framework in Java 21 targeting the RIU Hotels & Resorts website"
+---
+
+## Overview
+
+RIU Web App Automation is an end-to-end UI test automation framework built with **Selenium 4**, **Cucumber 7**, and **TestNG** in Java 21. It targets the [RIU Hotels & Resorts website](https://www.riu.com/es) and validates critical user flows — starting with the membership registration form — using the Behavior-Driven Development (BDD) approach.
+
+The framework is designed to be readable, maintainable, and extensible: Gherkin feature files describe test scenarios in plain language, the Page Object Model (POM) encapsulates UI interactions, and Allure generates rich HTML reports after every test run.
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Set up the project and run your first test in minutes
+  </Card>
+  <Card title="Architecture overview" icon="sitemap" href="/architecture/overview">
+    Understand the layers: hooks, steps, pages, utilities
+  </Card>
+  <Card title="Writing tests" icon="pencil" href="/guides/writing-tests">
+    Learn how to write new Gherkin scenarios and step definitions
+  </Card>
+  <Card title="Allure reports" icon="chart-bar" href="/guides/allure-reports">
+    Generate and serve rich HTML test reports
+  </Card>
+</CardGroup>
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="Selenium 4" icon="browser">
+    Uses Selenium 4's built-in driver manager — no manual ChromeDriver download required
+  </Card>
+  <Card title="Cucumber BDD" icon="list-check">
+    Gherkin feature files make test scenarios readable by the whole team
+  </Card>
+  <Card title="Page Object Model" icon="layer-group">
+    `BasePage` wraps every Selenium call with explicit waits, eliminating flakiness
+  </Card>
+  <Card title="PicoContainer DI" icon="arrows-split-up-and-left">
+    Dependency injection shares the `WebDriver` across all step classes safely
+  </Card>
+  <Card title="Allure reporting" icon="chart-line">
+    Step-level HTML reports with screenshots, attachments, and BDD behavior tabs
+  </Card>
+  <Card title="Tag-based execution" icon="tag">
+    Run only what you need with Cucumber tags such as `@smoke`
+  </Card>
+</CardGroup>
+
+## Technology stack
+
+| Component | Technology | Version |
+|---|---|---|
+| Language | Java | 21 |
+| Browser automation | Selenium WebDriver | 4.18.1 |
+| BDD framework | Cucumber | 7.15.0 |
+| Test runner | TestNG | 7.9.0 |
+| Dependency injection | PicoContainer | 7.15.0 |
+| Reporting | Allure | 2.27.0 |
+| Build tool | Maven | 3.x |
+| AOP weaving | AspectJ | 1.9.21 |
+
+## What is tested
+
+The current test suite covers the **RIU Hotels user registration flow** (`https://www.riu.com/es`):
+
+1. Navigate to the homepage and verify the page title
+2. Accept the cookie consent banner
+3. Open the "RIU pro" login/register modal
+4. Fill in the registration form — name, surname, email, country, gender, and legal consents — while intentionally skipping the birth date
+5. Submit the form and assert that the `"Este campo es obligatorio."` validation error appears for the birth date field
+
+This validates that birth date is correctly enforced as a required field in the RIU registration flow.

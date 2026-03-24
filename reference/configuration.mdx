@@ -1,0 +1,200 @@
+---
+title: "Configuration"
+description: "Configuration files and Maven properties for the test framework"
+---
+
+The framework is configured through three files: `pom.xml` (dependencies and build settings), `allure.properties` (report output directory), and `TestRunner.java` (Cucumber runtime options). This page documents every configurable point.
+
+---
+
+## `pom.xml`
+
+### Key properties
+
+```xml
+<properties>
+    <maven.compiler.source>21</maven.compiler.source>
+    <maven.compiler.target>21</maven.compiler.target>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <allure.version>2.27.0</allure.version>
+    <aspectj.version>1.9.21</aspectj.version>
+</properties>
+```
+
+| Property | Value | Description |
+|---|---|---|
+| `maven.compiler.source` / `target` | `21` | Java 21 is required. Do not lower this — AspectJ 1.9.21 targets Java 21. |
+| `allure.version` | `2.27.0` | Shared version for all `io.qameta.allure` artifacts. |
+| `aspectj.version` | `1.9.21` | AspectJ weaver version. Must be compatible with the Java version. |
+
+### Dependencies
+
+| Artifact | Version | Scope | Purpose |
+|---|---|---|---|
+| `selenium-java` | 4.18.1 | compile | Selenium 4 WebDriver and built-in driver manager |
+| `testng` | 7.9.0 | test | Test runner (required by `AbstractTestNGCucumberTests`) |
+| `allure-testng` | 2.27.0 | test | Allure integration for TestNG |
+| `cucumber-java` | 7.15.0 | test | Cucumber core and step definition annotations |
+| `cucumber-testng` | 7.15.0 | test | Bridges Cucumber scenarios into TestNG test methods |
+| `allure-cucumber7-jvm` | 2.27.0 | test | Allure plugin that captures Cucumber step results |
+| `cucumber-picocontainer` | 7.15.0 | test | PicoContainer dependency injection for Cucumber |
+
+### Maven Surefire plugin
+
+```xml
+<plugin>
+    <groupId>org.apache.maven.plugins</groupId>
+    <artifactId>maven-surefire-plugin</artifactId>
+    <version>3.2.5</version>
+    <configuration>
+        <argLine>
+            -javaagent:"${settings.localRepository}/org/aspectj/aspectjweaver/${aspectj.version}/aspectjweaver-${aspectj.version}.jar"
+        </argLine>
+        <systemPropertyVariables>
+            <allure.results.directory>
+                ${project.build.directory}/allure-results
+            </allure.results.directory>
+        </systemPropertyVariables>
+    </configuration>
+    <dependencies>
+        <dependency>
+            <groupId>org.aspectj</groupId>
+            <artifactId>aspectjweaver</artifactId>
+            <version>${aspectj.version}</version>
+        </dependency>
+    </dependencies>
+</plugin>
+```
+
+**`argLine` — AspectJ javaagent**
+
+The `-javaagent` argument loads `aspectjweaver` at JVM startup. This is required for Allure to intercept `@Step`, `@Attachment`, and similar annotations via compile-time/load-time weaving. Without it, Allure will still generate a report but step-level data will be missing.
+
+**`systemPropertyVariables`**
+
+Sets `allure.results.directory` as a JVM system property at test runtime, pointing Allure to `target/allure-results`. This takes precedence over `allure.properties` when both are present.
+
+<Note>
+  The `${settings.localRepository}` placeholder resolves to your local Maven repository (typically `~/.m2/repository`). The `aspectjweaver` JAR must be present there before tests run — it is downloaded automatically on the first `mvn test` invocation.
+</Note>
+
+### Allure Maven plugin
+
+```xml
+<plugin>
+    <groupId>io.qameta.allure</groupId>
+    <artifactId>allure-maven</artifactId>
+    <version>2.12.0</version>
+</plugin>
+```
+
+Provides two additional Maven goals:
+
+| Goal | Command | Description |
+|---|---|---|
+| `allure:report` | `mvn allure:report` | Generates the HTML report from `target/allure-results` |
+| `allure:serve` | `mvn allure:serve` | Generates and opens the report in a browser via a local HTTP server |
+
+---
+
+## `allure.properties`
+
+Located at `src/test/resources/allure.properties`.
+
+```properties
+allure.results.directory=target/allure-results
+```
+
+| Property | Default | Description |
+|---|---|---|
+| `allure.results.directory` | `target/allure-results` | Directory where Allure writes raw JSON result files during a test run. The `allure:report` goal reads from this path. |
+
+<Note>
+  The Surefire plugin also sets `allure.results.directory` as a system property. The system property takes precedence over `allure.properties`, so both point to the same directory by default. If you change one, change the other.
+</Note>
+
+---
+
+## `TestRunner.java`
+
+Located at `src/test/java/runners/TestRunner.java`.
+
+```java
+@CucumberOptions(
+        features = "classpath:features",
+        glue = {"steps", "hooks"},
+        tags = "@smoke",
+        plugin = {
+                "pretty",
+                "io.qameta.allure.cucumber7jvm.AllureCucumber7Jvm"
+        }
+)
+public class TestRunner extends AbstractTestNGCucumberTests {
+}
+```
+
+### `@CucumberOptions` reference
+
+<ResponseField name="features" type="String">
+  Path to the Gherkin feature files. `classpath:features` resolves to `src/test/resources/features/`. All `.feature` files in that directory tree are loaded.
+</ResponseField>
+
+<ResponseField name="glue" type="String[]">
+  Packages that Cucumber scans for step definitions and hooks. `"steps"` covers step definition classes; `"hooks"` covers the `Hooks` class. Add new packages here if you create step definitions outside these packages.
+</ResponseField>
+
+<ResponseField name="tags" type="String">
+  Cucumber tag expression that filters which scenarios to run. Currently set to `"@smoke"`, so only scenarios tagged `@smoke` execute. Set to an empty string or remove the attribute to run all scenarios.
+</ResponseField>
+
+<ResponseField name="plugin" type="String[]">
+  Reporting plugins. `"pretty"` prints formatted Gherkin output to the console. `AllureCucumber7Jvm` writes per-step result JSON files consumed by `allure:report`.
+</ResponseField>
+
+### Changing the tag filter
+
+Edit the `tags` attribute in `TestRunner.java`:
+
+```java
+// Run all scenarios
+tags = ""
+
+// Run only regression tests
+tags = "@regression"
+
+// Run smoke but not slow tests
+tags = "@smoke and not @slow"
+
+// Run smoke or regression
+tags = "@smoke or @regression"
+```
+
+You can also override the tag at the command line without editing the file:
+
+```bash
+mvn test -Dcucumber.filter.tags="@regression"
+```
+
+### Changing the Allure results directory
+
+Update the path in **both** `allure.properties` and the `<systemPropertyVariables>` block in `pom.xml`:
+
+```properties
+# allure.properties
+allure.results.directory=target/my-custom-results
+```
+
+```xml
+<!-- pom.xml -->
+<allure.results.directory>${project.build.directory}/my-custom-results</allure.results.directory>
+```
+
+---
+
+## System properties accepted at runtime
+
+| Property | How to set | Description |
+|---|---|---|
+| `cucumber.filter.tags` | `-Dcucumber.filter.tags="@tag"` | Overrides the `tags` value in `TestRunner.java` |
+| `allure.results.directory` | `-Dallure.results.directory=path` | Overrides the Allure output path |
+| `webdriver.chrome.driver` | `-Dwebdriver.chrome.driver=/path/to/chromedriver` | Points Selenium to a specific ChromeDriver binary (not needed with Selenium 4) |

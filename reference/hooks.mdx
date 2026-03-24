@@ -1,0 +1,123 @@
+---
+title: "Hooks"
+description: "Cucumber lifecycle hooks for browser setup and teardown"
+---
+
+The `Hooks` class contains Cucumber `@Before` and `@After` hooks that run automatically around every scenario. It is responsible for starting a fresh browser session before each test and closing it cleanly afterwards.
+
+## Source
+
+```java
+package hooks;
+
+import io.cucumber.java.After;
+import io.cucumber.java.Before;
+import org.openqa.selenium.chrome.ChromeDriver;
+import utilities.TestContext;
+
+public class Hooks {
+
+    private TestContext context;
+
+    public Hooks(TestContext context) {
+        this.context = context;
+    }
+
+    @Before
+    public void setUp() {
+        context.driver = new ChromeDriver();
+        context.driver.manage().window().maximize();
+    }
+
+    @After
+    public void tearDown() {
+        if (context.driver != null) {
+            context.driver.quit();
+        }
+    }
+}
+```
+
+## Constructor injection
+
+```java
+public Hooks(TestContext context)
+```
+
+PicoContainer calls this constructor when it instantiates `Hooks` for a scenario. The `TestContext` object it receives is the **same instance** shared with all step definition classes in the same scenario, so any value written to `context.driver` in `setUp()` is immediately visible to every step.
+
+## `@Before` — `setUp`
+
+```java
+@Before
+public void setUp()
+```
+
+Runs automatically **before the first step of every scenario**.
+
+- Creates a new `ChromeDriver` session using Selenium 4's built-in driver manager (no manual `chromedriver` download required).
+- Maximizes the browser window to prevent element-visibility failures caused by off-screen UI.
+- Stores the driver in `context.driver` so that all step classes and page objects can use it.
+
+<Note>
+  Selenium 4 resolves the ChromeDriver binary automatically via its built-in Selenium Manager. You do not need to configure a `WebDriverManager` dependency or download any binary manually.
+</Note>
+
+## `@After` — `tearDown`
+
+```java
+@After
+public void tearDown()
+```
+
+Runs automatically **after the last step of every scenario**, regardless of whether the scenario passed or failed.
+
+- Checks that `context.driver` is not `null` before calling `quit()` — this guard prevents a `NullPointerException` if `setUp()` failed to initialize the driver.
+- Calls `driver.quit()` (not `driver.close()`), which closes **all windows** and terminates the browser process, freeing OS and memory resources.
+
+<Warning>
+  Always use `quit()` rather than `close()` in teardown. `close()` only closes the current window and leaves the browser process running, which causes resource leaks in CI environments.
+</Warning>
+
+## Execution order
+
+```
+[Scenario begins]
+    → @Before setUp()       — new ChromeDriver, window maximized
+    → Step 1
+    → Step 2
+    → ...
+    → Step N
+    → @After tearDown()     — driver.quit(), resources released
+[Scenario ends]
+```
+
+## Adding custom hooks
+
+You can add more hooks directly to the `Hooks` class or create a separate hooks class in the `hooks` package. Both approaches are picked up automatically because `hooks` is listed in the `glue` configuration.
+
+```java
+// Attach a screenshot on failure
+@After
+public void attachScreenshotOnFailure(Scenario scenario) {
+    if (scenario.isFailed() && context.driver != null) {
+        byte[] screenshot = ((TakesScreenshot) context.driver)
+            .getScreenshotAs(OutputType.BYTES);
+        scenario.attach(screenshot, "image/png", "failure-screenshot");
+    }
+}
+```
+
+<Tip>
+  Cucumber supports multiple `@Before` and `@After` hooks in the same class or across different classes. Use the `order` attribute to control execution sequence when you have more than one hook of the same type: `@Before(order = 1)` runs before `@Before(order = 2)`.
+</Tip>
+
+### Scoping hooks to specific scenarios with tags
+
+```java
+// Only runs before scenarios tagged @login
+@Before("@login")
+public void setUpLoginContext() {
+    // pre-populate login credentials, etc.
+}
+```
